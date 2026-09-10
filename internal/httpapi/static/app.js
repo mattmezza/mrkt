@@ -1,5 +1,7 @@
 document.addEventListener('alpine:init',()=>{Alpine.data('disclosure',()=>({open:false,toggle(){this.open=!this.open}}));});
 function wire(){
+ const menu=document.querySelector('.sidebar-menu');
+ if(menu)menu.open=matchMedia('(min-width: 60rem)').matches;
  const dialog=document.querySelector('#view-search'),trigger=document.querySelector('#open-search'),query=document.querySelector('#view-query');
  if(!dialog||!trigger)return;
  trigger.onclick=()=>{dialog.showModal();query.focus()};

@@ -81,7 +81,7 @@ mrkt is MIT licensed. The following maintained dependencies retain their own lic
 - @tailwindcss/cli 4.3.3: [upstream license](licenses/@tailwindcss_cli/LICENSE)
 - tailwindcss 4.3.3: [upstream license](licenses/tailwindcss/LICENSE)
 - htmx.org 4.0.0: [upstream license](licenses/htmx.org/LICENSE)
-- @alpinejs/csp 3.17.2: see upstream module license
+- @alpinejs/csp 3.17.2: [upstream license](licenses/@alpinejs_csp/LICENSE.md)
 - @fontsource/space-grotesk 5.3.0: [upstream license](licenses/@fontsource_space-grotesk/LICENSE)
 - @fontsource/inter 5.3.0: [upstream license](licenses/@fontsource_inter/LICENSE)
 - @playwright/test 1.63.0: [upstream license](licenses/@playwright_test/LICENSE)

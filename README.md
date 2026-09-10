@@ -22,7 +22,7 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d
 
 Initialization is an explicit, one-time step. Restart using `up -d`; do not reinitialize. Open [the local UI](http://localhost:8080) and sign in with `development-only-admin-token-change-me`. [Mailpit](http://localhost:8025) captures all development mail; no real recipient is contacted. Use only synthetic `example.test` recipients.
 
-To use the local CLI, install Go and run `make build` (the precompiled embedded UI is included). Node is only needed to rebuild assets: `npm ci && npm run build`.
+To use the local CLI, install Go and run `make build` (the precompiled embedded UI is included). Node is only needed to rebuild assets: `npm ci && npm run build`. Release images accept `MRKT_VERSION`, `MRKT_COMMIT`, and `MRKT_BUILD_TIME` Docker build arguments; `mrkt version` reports the embedded values.
 
 ```sh
 export PATH="$PWD/bin:$PATH"

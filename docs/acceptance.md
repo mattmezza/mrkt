@@ -21,10 +21,10 @@ The acceptance contract is the root `prompt.md`. These checks use synthetic reci
 | Feedback/secrets | Signed MTA dedupe/order/suppression, forged SNS rejection and RSA verification fixtures, encrypted registry tenant contexts and offline rotation. |
 | CLI/MCP/skill | Local preset/command tests, official SDK in-memory and real stdio protocol smoke, installable skill validation. |
 | Workload | [Recorded serial synthetic benchmark](benchmark.md), including machine/configuration and measured times. |
-| Dependencies | npm audit returned zero findings. Go scan discovered vulnerable transitive HTML parsing; x/net was upgraded to v0.56.0. Final scan must be repeated after the dependency freeze. |
+| Dependencies | npm audit returned zero findings. Go scan discovered vulnerable transitive HTML parsing; x/net was upgraded to v0.56.0, and the final `govulncheck` reported no vulnerabilities. |
 
 ## Final delivery gate
 
-Final clean-clone Compose build/start, the latest browser/Go/vulnerability rerun, complete private push, and CI inspection are tracked in [build status](build-status.md). Earlier passing checks are not a substitute for rerunning after relevant changes. The repository's private branch-protection endpoint returned HTTP 403 for the current plan; the repository was not made public to enable it.
+Clean-clone Compose build/start, the latest browser/Go/vulnerability rerun, and final real recovery drill passed. The final private push and CI inspection are tracked in [build status](build-status.md). The repository's private branch-protection endpoint returned HTTP 403 for the current plan; the repository was not made public to enable it.
 
 SES and real internet deliverability were not exercised against an external production account. Those require operator provisioning and separately authorized sending; local captures do not establish inbox delivery or provider production readiness.

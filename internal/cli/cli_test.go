@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,4 +57,14 @@ func TestNamedLocalizedPresets(t *testing.T) {
 	}
 }
 
-func TestShellCompletion(t *testing.T){for _,shell:=range []string{"bash","zsh"}{var out bytes.Buffer;if err:=Run(context.Background(),[]string{"completion",shell},bytes.NewReader(nil),&out,&out);err!=nil{t.Fatal(err)};if !strings.Contains(out.String(),"projects"){t.Fatalf("%s completion missing commands",shell)}}}
+func TestShellCompletion(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh"} {
+		var out bytes.Buffer
+		if err := Run(context.Background(), []string{"completion", shell}, bytes.NewReader(nil), &out, &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "projects") {
+			t.Fatalf("%s completion missing commands", shell)
+		}
+	}
+}

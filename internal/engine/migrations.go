@@ -41,7 +41,9 @@ CREATE TABLE provider_feedback(project_id TEXT NOT NULL,event_id TEXT NOT NULL,f
 	`CREATE TABLE webhook_attempts(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,delivery_id TEXT NOT NULL,event_id TEXT NOT NULL,status INTEGER,error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);CREATE INDEX webhook_attempts_delivery ON webhook_attempts(project_id,delivery_id,created_at);`,
 	`ALTER TABLE deliveries ADD COLUMN transport_id TEXT NOT NULL DEFAULT '';`,
 	`ALTER TABLE events ADD COLUMN request_fingerprint TEXT NOT NULL DEFAULT '';`,
-	`ALTER TABLE enrollments ADD COLUMN entry_key TEXT NOT NULL DEFAULT '';UPDATE enrollments SET entry_key=CASE WHEN event_id IS NULL THEN 'once' ELSE event_id END;CREATE UNIQUE INDEX enrollments_entry_dedupe ON enrollments(project_id,sequence_id,contact_id,entry_key);`}
+	`ALTER TABLE enrollments ADD COLUMN entry_key TEXT NOT NULL DEFAULT '';UPDATE enrollments SET entry_key=CASE WHEN event_id IS NULL THEN 'once' ELSE event_id END;CREATE UNIQUE INDEX enrollments_entry_dedupe ON enrollments(project_id,sequence_id,contact_id,entry_key);`,
+	`ALTER TABLE enrollments ADD COLUMN completion_emitted INTEGER NOT NULL DEFAULT 0;`,
+	`ALTER TABLE broadcasts ADD COLUMN completion_emitted INTEGER NOT NULL DEFAULT 0;`}
 
 func (e *Engine) migrate(ctx context.Context) error {
 	tx, err := e.db.BeginTx(ctx, nil)

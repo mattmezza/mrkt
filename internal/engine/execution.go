@@ -192,37 +192,52 @@ func (e *Engine) doEvents(ctx context.Context, a Authority, op Operation) (any, 
 				}
 			}
 		}
-		for _, b := range m.Broadcasts {
-			if b.Event == in.Type {
-				bid := newID("brd")
-				_, er = tx.ExecContext(ctx, `INSERT OR IGNORE INTO broadcasts(id,project_id,release_id,definition_id,event_id,state,audience_frozen_at,created_at) VALUES(?,?,?,?,?,'queued',?,?)`, bid, op.Project, rid, b.ID, id, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
-				if er != nil {
-					return nil, er
-				}
-				rows, er := tx.QueryContext(ctx, `SELECT c.contact_id FROM consent c JOIN contacts x ON x.id=c.contact_id LEFT JOIN suppressions s ON s.project_id=c.project_id AND s.email=x.email WHERE c.project_id=? AND c.list_id=? AND c.state='confirmed' AND x.deleted_at IS NULL AND s.email IS NULL`, op.Project, b.List)
-				if er != nil {
-					return nil, er
-				}
-				for rows.Next() {
-					var cid string
-					if er = rows.Scan(&cid); er != nil {
-						rows.Close()
-						return nil, er
-					}
-					pay, _ := json.Marshal(map[string]string{"broadcast_id": bid, "contact_id": cid, "message": b.Message, "release_id": rid})
-					_, er = tx.ExecContext(ctx, `INSERT INTO jobs(id,project_id,kind,payload,run_at,state,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)`, newID("job"), op.Project, "broadcast", string(pay), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+		if in.ContactID == "" {
+			for _, b := range m.Broadcasts {
+				if b.Event == in.Type {
+					bid := newID("brd")
+					_, er = tx.ExecContext(ctx, `INSERT OR IGNORE INTO broadcasts(id,project_id,release_id,definition_id,event_id,state,audience_frozen_at,created_at) VALUES(?,?,?,?,?,'queued',?,?)`, bid, op.Project, rid, b.ID, id, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 					if er != nil {
-						rows.Close()
 						return nil, er
 					}
+					rows, er := tx.QueryContext(ctx, `SELECT c.contact_id FROM consent c JOIN contacts x ON x.id=c.contact_id LEFT JOIN suppressions s ON s.project_id=c.project_id AND s.email=x.email WHERE c.project_id=? AND c.list_id=? AND c.state='confirmed' AND x.deleted_at IS NULL AND s.email IS NULL`, op.Project, b.List)
+					if er != nil {
+						return nil, er
+					}
+					for rows.Next() {
+						var cid string
+						if er = rows.Scan(&cid); er != nil {
+							rows.Close()
+							return nil, er
+						}
+						pay, _ := json.Marshal(map[string]string{"broadcast_id": bid, "contact_id": cid, "message": b.Message, "release_id": rid})
+						_, er = tx.ExecContext(ctx, `INSERT INTO jobs(id,project_id,kind,payload,run_at,state,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)`, newID("job"), op.Project, "broadcast", string(pay), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+						if er != nil {
+							rows.Close()
+							return nil, er
+						}
+					}
+					rows.Close()
 				}
-				rows.Close()
 			}
 		}
 		return map[string]any{"id": id, "duplicate": false}, nil
 	})
 	if er != nil {
 		return nil, asEngineError(er)
+	}
+	rows, queryErr := e.db.QueryContext(ctx, `SELECT id FROM broadcasts WHERE project_id=? AND event_id=? AND state='queued'`, op.Project, id)
+	if queryErr == nil {
+		var ids []string
+		for rows.Next() {
+			var bid string
+			_ = rows.Scan(&bid)
+			ids = append(ids, bid)
+		}
+		rows.Close()
+		for _, bid := range ids {
+			_ = e.maybeCompleteBroadcast(ctx, op.Project, bid)
+		}
 	}
 	return res, nil
 }
@@ -326,7 +341,20 @@ func (e *Engine) runJob(ctx context.Context, j claimedJob) error {
 	case "broadcast":
 		var p map[string]string
 		_ = json.Unmarshal([]byte(j.payload), &p)
-		return e.dispatch(ctx, j, p["contact_id"], p["release_id"], "", p["broadcast_id"], "broadcast", p["message"])
+		var broadcastState string
+		if e.db.QueryRowContext(ctx, `SELECT state FROM broadcasts WHERE id=? AND project_id=?`, p["broadcast_id"], j.p).Scan(&broadcastState) != nil {
+			return e.finishJob(ctx, j.id, "cancelled", "broadcast unavailable")
+		}
+		if broadcastState == "paused" {
+			return e.retryJob(ctx, j.id, "broadcast paused")
+		}
+		if broadcastState != "queued" {
+			return e.finishJob(ctx, j.id, "cancelled", "broadcast "+broadcastState)
+		}
+		if er := e.dispatch(ctx, j, p["contact_id"], p["release_id"], "", p["broadcast_id"], "broadcast", p["message"]); er != nil {
+			return er
+		}
+		return e.maybeCompleteBroadcast(ctx, j.p, p["broadcast_id"])
 	case "sequence":
 		var p map[string]string
 		_ = json.Unmarshal([]byte(j.payload), &p)
@@ -337,9 +365,34 @@ func (e *Engine) runJob(ctx context.Context, j claimedJob) error {
 		var state string
 		_ = e.db.QueryRowContext(ctx, `SELECT state FROM deliveries WHERE enrollment_id=? AND step_id=?`, p["enrollment_id"], p["step_id"]).Scan(&state)
 		if state == mail.StateAccepted {
-			_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state=CASE WHEN ?='' THEN 'completed' ELSE 'active' END,next_at=?,updated_at=? WHERE id=? AND project_id=?`, p["next"], p["next"], e.now().UTC().Format(time.RFC3339Nano), e.now().UTC().Format(time.RFC3339Nano), p["enrollment_id"], j.p)
+			if p["next"] == "" {
+				er = e.completeEnrollment(ctx, j.p, p["enrollment_id"], "terminal send")
+			} else {
+				_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state='active',next_at=?,updated_at=? WHERE id=? AND project_id=? AND state='waiting'`, p["next"], e.now().UTC().Format(time.RFC3339Nano), e.now().UTC().Format(time.RFC3339Nano), p["enrollment_id"], j.p)
+			}
 		}
 		return er
+	case "enrollment_complete":
+		var p map[string]string
+		_ = json.Unmarshal([]byte(j.payload), &p)
+		var enrollmentState string
+		stateErr := e.db.QueryRowContext(ctx, `SELECT state FROM enrollments WHERE id=? AND project_id=?`, p["enrollment_id"], j.p).Scan(&enrollmentState)
+		if stateErr == sql.ErrNoRows {
+			return e.finishJob(ctx, j.id, "cancelled", "enrollment missing")
+		}
+		if stateErr != nil {
+			return stateErr
+		}
+		if enrollmentState == "paused" {
+			return e.retryJob(ctx, j.id, "enrollment paused")
+		}
+		if enrollmentState != "waiting" {
+			return e.finishJob(ctx, j.id, "cancelled", "enrollment "+enrollmentState)
+		}
+		if er := e.completeEnrollment(ctx, j.p, p["enrollment_id"], p["reason"]); er != nil {
+			return er
+		}
+		return e.finishJob(ctx, j.id, "complete", "")
 	default:
 		return e.advanceEnrollmentJob(ctx, j)
 	}
@@ -378,7 +431,7 @@ func (e *Engine) scheduleDueEnrollments(ctx context.Context, now time.Time) erro
 			continue
 		}
 		if seq.Exit != nil && evaluateCondition(ctx, e.db, d.p, d.c, d.event, seq.Exit) {
-			_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,updated_at=? WHERE id=?`, now.Format(time.RFC3339Nano), d.id)
+			er = e.completeEnrollment(ctx, d.p, d.id, "exit condition")
 			if er != nil {
 				return er
 			}
@@ -397,16 +450,37 @@ func (e *Engine) scheduleDueEnrollments(ctx context.Context, now time.Time) erro
 		}
 		switch st.Type {
 		case "complete":
-			_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,updated_at=? WHERE id=? AND state='active'`, now.Format(time.RFC3339Nano), d.id)
+			er = e.completeEnrollment(ctx, d.p, d.id, "complete step")
 		case "delay":
 			delay, _ := time.ParseDuration(st.Delay)
-			_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state=CASE WHEN ?='' THEN 'completed' ELSE 'active' END,next_at=?,updated_at=? WHERE id=? AND state='active'`, st.Next, st.Next, now.Add(delay).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.id)
+			if st.Next == "" {
+				payload, _ := json.Marshal(map[string]string{"enrollment_id": d.id, "reason": "terminal delay"})
+				tx, e2 := e.db.BeginTx(ctx, nil)
+				if e2 != nil {
+					return e2
+				}
+				_, e2 = tx.ExecContext(ctx, `UPDATE enrollments SET state='waiting',next_at=?,updated_at=? WHERE id=? AND state='active'`, now.Add(delay).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.id)
+				if e2 == nil {
+					_, e2 = tx.ExecContext(ctx, `INSERT INTO jobs(id,project_id,kind,payload,run_at,state,created_at,updated_at) VALUES(?,?,?,?,?,'pending',?,?)`, newID("job"), d.p, "enrollment_complete", string(payload), now.Add(delay).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+				}
+				if e2 != nil {
+					tx.Rollback()
+					return e2
+				}
+				er = tx.Commit()
+			} else {
+				_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state='active',next_at=?,updated_at=? WHERE id=? AND state='active'`, st.Next, now.Add(delay).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.id)
+			}
 		case "condition":
 			next := st.Else
 			if evaluateCondition(ctx, e.db, d.p, d.c, d.event, st.Condition) {
 				next = st.Next
 			}
-			_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state=CASE WHEN ?='' THEN 'completed' ELSE 'active' END,next_at=?,updated_at=? WHERE id=? AND state='active'`, next, next, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.id)
+			if next == "" {
+				er = e.completeEnrollment(ctx, d.p, d.id, "terminal condition")
+			} else {
+				_, er = e.db.ExecContext(ctx, `UPDATE enrollments SET current_step=?,state='active',next_at=?,updated_at=? WHERE id=? AND state='active'`, next, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.id)
+			}
 		case "send":
 			payload, _ := json.Marshal(map[string]string{"contact_id": d.c, "release_id": d.r, "enrollment_id": d.id, "step_id": st.ID, "message": st.Message, "next": st.Next})
 			tx, e2 := e.db.BeginTx(ctx, nil)
@@ -461,6 +535,49 @@ func (e *Engine) retryJob(ctx context.Context, id, detail string) error {
 	_, er := e.db.ExecContext(ctx, `UPDATE jobs SET state='pending',run_at=?,last_error=?,lease_owner=NULL,lease_until=NULL,updated_at=? WHERE id=?`, e.now().UTC().Add(time.Minute).Format(time.RFC3339Nano), detail, e.now().UTC().Format(time.RFC3339Nano), id)
 	return er
 }
+func (e *Engine) completeEnrollment(ctx context.Context, p, id, reason string) error {
+	now := e.now().UTC().Format(time.RFC3339Nano)
+	_, er := withTx(ctx, e.db, func(tx *sql.Tx) (any, error) {
+		r, er := tx.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,completion_emitted=1,updated_at=? WHERE id=? AND project_id=? AND completion_emitted=0 AND state IN ('active','waiting')`, now, id, p)
+		if er != nil {
+			return nil, er
+		}
+		n, _ := r.RowsAffected()
+		if n == 0 {
+			return nil, nil
+		}
+		if er = insertOutbox(ctx, tx, p, "sequence.completed", map[string]any{"enrollment_id": id, "reason": reason}, id, now); er != nil {
+			return nil, er
+		}
+		return nil, nil
+	})
+	return er
+}
+func (e *Engine) maybeCompleteBroadcast(ctx context.Context, p, id string) error {
+	now := e.now().UTC().Format(time.RFC3339Nano)
+	_, er := withTx(ctx, e.db, func(tx *sql.Tx) (any, error) {
+		var outstanding int
+		if er := tx.QueryRowContext(ctx, `SELECT count(*) FROM jobs WHERE project_id=? AND kind='broadcast' AND state IN ('pending','dispatching') AND json_extract(payload,'$.broadcast_id')=?`, p, id).Scan(&outstanding); er != nil {
+			return nil, er
+		}
+		if outstanding != 0 {
+			return nil, nil
+		}
+		r, er := tx.ExecContext(ctx, `UPDATE broadcasts SET state='completed',completion_emitted=1 WHERE id=? AND project_id=? AND state='queued' AND completion_emitted=0`, id, p)
+		if er != nil {
+			return nil, er
+		}
+		n, _ := r.RowsAffected()
+		if n == 0 {
+			return nil, nil
+		}
+		if er = insertOutbox(ctx, tx, p, "broadcast.completed", map[string]any{"broadcast_id": id}, id, now); er != nil {
+			return nil, er
+		}
+		return nil, nil
+	})
+	return er
+}
 
 func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseID, enrollmentID, broadcastID, stepID, messageKey string) error {
 	var paused, recovery, projectPaused int
@@ -483,7 +600,7 @@ func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseI
 		_ = e.db.QueryRowContext(ctx, `SELECT sequence_id FROM enrollments WHERE id=?`, enrollmentID).Scan(&sid)
 		for _, seq := range m.Sequences {
 			if seq.ID == sid && seq.Exit != nil && evaluateCondition(ctx, e.db, j.p, contactID, eventID, seq.Exit) {
-				_, _ = e.db.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,updated_at=? WHERE id=?`, e.now().UTC().Format(time.RFC3339Nano), enrollmentID)
+				_ = e.completeEnrollment(ctx, j.p, enrollmentID, "exit condition")
 				return e.finishJob(ctx, j.id, "cancelled", "sequence exit condition matched")
 			}
 		}
@@ -559,7 +676,7 @@ func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseI
 		_ = e.db.QueryRowContext(ctx, `SELECT sequence_id FROM enrollments WHERE id=?`, enrollmentID).Scan(&sid)
 		for _, seq := range m.Sequences {
 			if seq.ID == sid && seq.Exit != nil && evaluateCondition(ctx, e.db, j.p, contactID, eventID, seq.Exit) {
-				_, _ = e.db.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,updated_at=? WHERE id=?`, e.now().UTC().Format(time.RFC3339Nano), enrollmentID)
+				_ = e.completeEnrollment(ctx, j.p, enrollmentID, "exit condition at dispatch boundary")
 				return e.finishJob(ctx, j.id, "cancelled", "sequence exit condition matched at dispatch boundary")
 			}
 		}
@@ -596,7 +713,7 @@ func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseI
 	}
 	if reservation == "exit" {
 		if enrollmentID != "" {
-			_, _ = e.db.ExecContext(ctx, `UPDATE enrollments SET state='completed',next_at=NULL,updated_at=? WHERE id=?`, e.now().UTC().Format(time.RFC3339Nano), enrollmentID)
+			_ = e.completeEnrollment(ctx, j.p, enrollmentID, "exit condition at intent boundary")
 		}
 		return e.finishJob(ctx, j.id, "cancelled", "sequence exit condition matched at intent boundary")
 	}
@@ -630,7 +747,7 @@ func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseI
 	if state == "" {
 		state = mail.StateUncertain
 	}
-	_, _ = e.db.ExecContext(ctx, `UPDATE deliveries SET state=?,detail=?,updated_at=? WHERE id=?`, state, res.Detail, e.now().UTC().Format(time.RFC3339Nano), did)
+	state = e.recordSMTPResult(ctx, did, state, res.Detail)
 	if state == mail.StateTransient {
 		e.maybeOpenCircuit(ctx, j.p)
 	}
@@ -641,6 +758,21 @@ func (e *Engine) dispatch(ctx context.Context, j claimedJob, contactID, releaseI
 		return e.retryJob(ctx, j.id, res.Detail)
 	}
 	return e.finishJob(ctx, j.id, map[bool]string{true: "uncertain", false: "failed"}[state == mail.StateUncertain], res.Detail)
+}
+func (e *Engine) recordSMTPResult(ctx context.Context, did, state, detail string) string {
+	r, er := e.db.ExecContext(ctx, `UPDATE deliveries SET state=?,detail=?,updated_at=? WHERE id=? AND state='dispatching'`, state, detail, e.now().UTC().Format(time.RFC3339Nano), did)
+	if er != nil {
+		return mail.StateUncertain
+	}
+	updated, _ := r.RowsAffected()
+	if updated == 0 {
+		var preserved string
+		if e.db.QueryRowContext(ctx, `SELECT state FROM deliveries WHERE id=?`, did).Scan(&preserved) == nil {
+			return preserved
+		}
+		return mail.StateUncertain
+	}
+	return state
 }
 
 func (e *Engine) reserveTransportSend(ctx context.Context, p string) bool {
@@ -699,6 +831,24 @@ func (e *Engine) reserveDelivery(ctx context.Context, p, email, contact, list, r
 	defer tx.Rollback()
 	if exit != nil && evaluateCondition(ctx, tx, p, contact, eventID, exit) {
 		return "", "", "", "exit", tx.Commit()
+	}
+	if enrollment != "" {
+		var active int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM enrollments WHERE id=? AND project_id=? AND state='waiting'`, enrollment, p).Scan(&active); err != nil {
+			return
+		}
+		if active != 1 {
+			return "", "", "", "ineligible", tx.Commit()
+		}
+	}
+	if broadcast != "" {
+		var active int
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM broadcasts WHERE id=? AND project_id=? AND state='queued'`, broadcast, p).Scan(&active); err != nil {
+			return
+		}
+		if active != 1 {
+			return "", "", "", "ineligible", tx.Commit()
+		}
 	}
 	var eligible int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM consent c JOIN contacts x ON x.id=c.contact_id AND x.project_id=c.project_id JOIN lists l ON l.project_id=c.project_id AND l.id=c.list_id JOIN projects p ON p.id=c.project_id JOIN installation i ON i.id=1 LEFT JOIN suppressions s ON s.project_id=c.project_id AND s.email=? WHERE c.project_id=? AND c.contact_id=? AND c.list_id=? AND c.state='confirmed' AND c.policy_version=l.policy_version AND l.retired=0 AND x.deleted_at IS NULL AND s.email IS NULL AND p.paused=0 AND i.outbound_paused=0`, email, p, contact, list).Scan(&eligible); err != nil {

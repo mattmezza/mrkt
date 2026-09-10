@@ -210,6 +210,37 @@ func TestRecoveryRequiresAuditedResume(t *testing.T) {
 	}
 }
 
+func TestRecoveryResumeFailsClosedWhenMarkerCannotBeRemoved(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "db")
+	e, er := Open(Config{DBPath: path, Initialize: true, Recovery: true, AdminToken: "x"})
+	if er != nil {
+		t.Fatal(er)
+	}
+	defer e.Close()
+	marker := path + ".recovery-required"
+	if er = os.Mkdir(marker, 0700); er != nil {
+		t.Fatal(er)
+	}
+	if er = os.WriteFile(filepath.Join(marker, "keep"), []byte("recovery\n"), 0600); er != nil {
+		t.Fatal(er)
+	}
+	_, er = e.Do(ctx, Authority{Admin: true}, Operation{Resource: "installation", Action: "resume", Input: raw(map[string]any{"reconciled": true, "note": "reviewed provider records"})})
+	if er == nil || er.(*Error).Code != "recovery_marker_remove_failed" {
+		t.Fatalf("resume error=%v", er)
+	}
+	var recovery, paused, audits int
+	if er = e.db.QueryRow(`SELECT recovery,outbound_paused FROM installation WHERE id=1`).Scan(&recovery, &paused); er != nil {
+		t.Fatal(er)
+	}
+	if er = e.db.QueryRow(`SELECT count(*) FROM audit WHERE action='recovery.resume'`).Scan(&audits); er != nil {
+		t.Fatal(er)
+	}
+	if recovery != 1 || paused != 1 || audits != 0 {
+		t.Fatalf("recovery=%d paused=%d audits=%d", recovery, paused, audits)
+	}
+}
+
 func TestRecoveryMarkerAndCSVConsentSafety(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "db")

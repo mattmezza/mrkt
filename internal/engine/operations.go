@@ -45,11 +45,14 @@ func (e *Engine) doInstallation(ctx context.Context, a Authority, op Operation) 
 		if _, er = tx.ExecContext(ctx, `INSERT INTO audit(id,action,detail,created_at) VALUES(?,'recovery.resume',?,?)`, newID("aud"), string(detail), now); er != nil {
 			return nil, internal(er)
 		}
+		// Remove the durable recovery marker before committing the database resume.
+		// If removal fails the transaction rolls back and outbound remains paused. If
+		// the subsequent commit fails, the database's recovery bit still fails safe.
+		if er := os.Remove(e.cfg.DBPath + ".recovery-required"); er != nil && !os.IsNotExist(er) {
+			return nil, &Error{"recovery_marker_remove_failed", "the recovery marker could not be removed; outbound remains paused", 500}
+		}
 		if er = tx.Commit(); er != nil {
 			return nil, internal(er)
-		}
-		if er := os.Remove(e.cfg.DBPath + ".recovery-required"); er != nil && !os.IsNotExist(er) {
-			return nil, &Error{"recovery_marker_remove_failed", "reconciliation was audited but the recovery marker remains; restart will pause outbound again", 500}
 		}
 		return map[string]any{"recovery": false, "outbound_paused": false}, nil
 	}
@@ -346,6 +349,37 @@ func explainReason(state, consent, suppression, next string) string {
 	return state
 }
 func (e *Engine) doBroadcasts(ctx context.Context, a Authority, op Operation) (any, error) {
+	if op.Action == "pause" || op.Action == "resume" || op.Action == "cancel" {
+		target := map[string]string{"pause": "paused", "resume": "queued", "cancel": "cancelled"}[op.Action]
+		from := map[string]string{"pause": "queued", "resume": "paused", "cancel": "queued','paused"}[op.Action]
+		now := e.now().UTC().Format(time.RFC3339Nano)
+		tx, er := e.db.BeginTx(ctx, nil)
+		if er != nil {
+			return nil, internal(er)
+		}
+		defer tx.Rollback()
+		r, er := tx.ExecContext(ctx, `UPDATE broadcasts SET state=? WHERE id=? AND project_id=? AND state IN ('`+from+`')`, target, op.ID, op.Project)
+		if er != nil {
+			return nil, internal(er)
+		}
+		n, _ := r.RowsAffected()
+		if n == 0 {
+			return nil, conflict("invalid_transition", "broadcast state does not permit "+op.Action)
+		}
+		if op.Action == "cancel" {
+			if _, er = tx.ExecContext(ctx, `UPDATE jobs SET state='cancelled',updated_at=? WHERE project_id=? AND kind='broadcast' AND state='pending' AND json_extract(payload,'$.broadcast_id')=?`, now, op.Project, op.ID); er != nil {
+				return nil, internal(er)
+			}
+		}
+		detail, _ := json.Marshal(map[string]any{"broadcast_id": op.ID, "state": target})
+		if _, er = tx.ExecContext(ctx, `INSERT INTO audit(id,project_id,action,detail,created_at) VALUES(?,?,?,?,?)`, newID("aud"), op.Project, "broadcast."+op.Action, string(detail), now); er != nil {
+			return nil, internal(er)
+		}
+		if er = tx.Commit(); er != nil {
+			return nil, internal(er)
+		}
+		return map[string]any{"id": op.ID, "state": target}, nil
+	}
 	return e.listRuntime(ctx, op, "broadcasts")
 }
 func (e *Engine) listRuntime(ctx context.Context, op Operation, kind string) (any, error) {

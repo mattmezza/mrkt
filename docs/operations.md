@@ -52,7 +52,7 @@ Alert on increasing time since the last `replica sync`/upload and any growing sy
    ```
 
    Compare active release inventories to S3 objects, investigate queued/dispatching/uncertain records, and verify restored confirmations, unsubscribes, complaints and suppressions against provider records. `mrkt api installation` is the application recovery status check; there is no separate success-returning “verify” command.
-7. Reconcile changes that may have occurred after the last replicated transaction: unsubscribes, complaints, accepted SMTP sends, and webhook acknowledgements cannot be reconstructed from SQLite backup alone. Do not blindly replay overdue or ambiguous sends.
+6. Reconcile changes that may have occurred after the last replicated transaction: unsubscribes, complaints, accepted SMTP sends, and webhook acknowledgements cannot be reconstructed from SQLite backup alone. Do not blindly replay overdue or ambiguous sends.
 7. Record the incident, last trustworthy provider timestamps and reviewed cutoff. Resume only with an explicit audit note:
 
    ```sh

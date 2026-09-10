@@ -22,3 +22,13 @@ Localized English/Italian/Turkish starters are available for `coming-soon`, `wel
 Named remote commands include `projects`, `tokens`, `releases`, `events emit`, `contacts`, `sequences`, `broadcasts`, `explain`, `domains`, `transports`, `webhooks`, and `doctor`. Each resource supports consistent `list`, `get`, `create`, `delete`, and explicit action verbs where valid. Use `--output json` or `--output table`.
 
 Pass `--env NAME` to select credentials from `$MRKT_CONFIG` or the platform config directory at `mrkt/config.json`. The JSON shape is `{"environments":{"NAME":{"url":"...","token":"..."}}}` and the file must have mode `0600`.
+
+Generate shell completion from the installed binary:
+
+```sh
+# Bash, for the current shell
+source <(mrkt completion bash)
+
+# Zsh, persist in a directory already present in $fpath
+mrkt completion zsh > ~/.zfunc/_mrkt
+```

@@ -189,7 +189,7 @@ func (s *Server) ui(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			d.Columns = []string{"to_email", "state", "subject", "created_at"}
+			d.Columns = []string{"message_id", "state", "contact_id", "release_id", "detail"}
 		} else {
 			op := engine.Operation{Project: d.Project, Resource: d.Resource, Action: "list", Cursor: d.Cursor, Limit: 50, Input: json.RawMessage(`{}`)}
 			if id := r.URL.Query().Get("id"); id != "" {

@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+node_modules
+bin
+test-results
+playwright-report
+*.db
+*.db-shm
+*.db-wal
+*.trace

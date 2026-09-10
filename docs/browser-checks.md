@@ -8,7 +8,7 @@ For browser coverage, start an initialized server containing at least one projec
 MRKT_BROWSER_URL=http://127.0.0.1:8080 MRKT_BROWSER_TOKEN='...' npm run test:browser
 ```
 
-The Playwright configuration uses installed `/usr/bin/chromium`. Tests cover login, overview, contacts, releases, recovery, and an error route at widths 320, 375, 414, 768, and 1280. Screenshots are intentionally not written until the UI owner declares the design ready; final approved captures belong in `assets/brand/screenshots`.
+Set `MRKT_CHROMIUM_PATH` to an explicit Chromium executable when needed. The configuration otherwise uses `/usr/bin/chromium` when present and falls back to Playwright's bundled Chromium in CI. Tests cover login, compact keyboard-accessible mobile navigation, overview, contacts, releases, recovery, and an error route at widths 320, 375, 414, 768, and 1280. Final captures belong in `assets/brand/screenshots`.
 
 The acceptance run also generates seeded overview, contacts, and releases screenshots at all five widths after checking for horizontal overflow. It exercises the keyboard command palette, invalid pause input, and a successful CSRF-protected pause action.
 

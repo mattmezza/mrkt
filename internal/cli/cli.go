@@ -57,7 +57,21 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
-func runCompletion(args []string,w io.Writer)error{if len(args)!=1{return errors.New("usage: mrkt completion <bash|zsh>")};commands:="init sequence validate preview plan deploy projects tokens releases events contacts sequences broadcasts explain domains transports webhooks doctor api mcp completion";switch args[0]{case "bash":fmt.Fprintf(w,"_mrkt_complete() { COMPREPLY=( $(compgen -W '%s' -- \"${COMP_WORDS[1]}\") ); }\ncomplete -F _mrkt_complete mrkt\n",commands);case "zsh":fmt.Fprintf(w,"#compdef mrkt\n_arguments '1:command:(%s)' '*::argument:->args'\n",commands);default:return errors.New("completion shell must be bash or zsh")};return nil}
+func runCompletion(args []string, w io.Writer) error {
+	if len(args) != 1 {
+		return errors.New("usage: mrkt completion <bash|zsh>")
+	}
+	commands := "init sequence validate preview plan deploy projects tokens releases events contacts sequences broadcasts explain domains transports webhooks doctor api mcp completion"
+	switch args[0] {
+	case "bash":
+		fmt.Fprintf(w, "_mrkt_complete() { COMPREPLY=( $(compgen -W '%s' -- \"${COMP_WORDS[1]}\") ); }\ncomplete -F _mrkt_complete mrkt\n", commands)
+	case "zsh":
+		fmt.Fprintf(w, "#compdef mrkt\n_arguments '1:command:(%s)' '*::argument:->args'\n", commands)
+	default:
+		return errors.New("completion shell must be bash or zsh")
+	}
+	return nil
+}
 
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: mrkt <init|sequence add|validate|preview|plan|deploy|projects|tokens|releases|events|contacts|sequences|broadcasts|explain|domains|transports|webhooks|doctor|api|mcp serve>")
