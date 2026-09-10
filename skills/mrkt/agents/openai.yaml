@@ -1,0 +1,4 @@
+interface:
+  display_name: "mrkt"
+  short_description: "Manage mrkt email marketing projects"
+  default_prompt: "Use mrkt to validate, preview, deploy, or operate this email marketing project."

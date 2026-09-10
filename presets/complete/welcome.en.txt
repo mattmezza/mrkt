@@ -1,0 +1,3 @@
+Welcome, {{.Name}}
+
+Thanks for joining us. Unsubscribe: {{.UnsubscribeURL}}

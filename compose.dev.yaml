@@ -1,0 +1,69 @@
+services:
+  app:
+    environment:
+      MRKT_DEVELOPMENT: "true"
+      MRKT_CHALLENGE_BYPASS: "true"
+      MRKT_PUBLIC_URL: http://localhost:8080
+      MRKT_ENCRYPTION_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      MRKT_ADMIN_TOKEN: development-only-admin-token-change-me
+      MRKT_FROM: mrkt development <mrkt@localhost>
+      MRKT_WEBHOOK_DEVELOPMENT_ALLOWED_HOSTS: host.docker.internal:18080
+      MRKT_S3_BUCKET: mrkt
+      MRKT_S3_REGION: us-east-1
+      MRKT_S3_ENDPOINT: http://minio:9000
+      MRKT_S3_PATH_STYLE: "true"
+      MRKT_SMTP_HOST: mailpit
+      MRKT_SMTP_PORT: "1025"
+      MRKT_SMTP_TLS_MODE: plain
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-mrktdev}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-mrktdev-secret}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      minio-init: {condition: service_completed_successfully}
+      mailpit: {condition: service_healthy}
+  litestream:
+    environment:
+      LITESTREAM_BUCKET: mrkt
+      LITESTREAM_PREFIX: mrkt/development/backups
+      LITESTREAM_REGION: us-east-1
+      LITESTREAM_ENDPOINT: http://minio:9000
+      LITESTREAM_PATH_STYLE: "true"
+      MRKT_INSTALLATION_ID: development
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-mrktdev}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-mrktdev-secret}
+    depends_on:
+      app: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mrktdev}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-mrktdev-secret}
+    volumes: [minio:/data]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on: {minio: {condition: service_healthy}}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mrktdev}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-mrktdev-secret}
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; mc mb --ignore-existing local/mrkt"]
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+volumes:
+  minio:

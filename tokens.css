@@ -1,0 +1,18 @@
+/* Hallmark · macrostructure: Workbench · theme: Cobalt · tone: technical · nav: N3 adapted operational sidebar · footer: Ft2 */
+:root {
+ --color-paper: oklch(98.5% .004 250); --color-surface: oklch(100% .002 250); --color-paper-2: oklch(95.5% .008 250);
+ --color-ink: oklch(24% .02 258); --color-muted: oklch(47% .025 258); --color-rule: oklch(85% .015 250);
+ --color-accent: oklch(49% .20 256); --color-accent-ink: oklch(99% .002 250); --color-focus: oklch(42% .13 256);
+ --color-error: oklch(46% .17 25); --color-success: oklch(40% .10 155); --color-warning: oklch(46% .09 75); --color-overlay: oklch(24% .02 258 / .35);
+ --font-display: 'Space Grotesk', sans-serif; --font-body: 'Inter', sans-serif; --font-mono: ui-monospace, monospace;
+ --space-xs: .25rem; --space-sm: .5rem; --space-md: 1rem; --space-lg: 1.5rem; --space-xl: 2.5rem; --space-2xl: 4rem;
+ --text-sm: .875rem; --text-base: 1rem; --text-lg: 1.25rem; --text-xl: 1.56rem; --text-display: clamp(1.8rem, 3vw, 2.45rem);
+ --radius-sm: 6px; --radius-lg: 10px; --rule: 1px;
+ --dur-micro: 120ms; --ease-out: cubic-bezier(.16,1,.3,1); --ease-in: cubic-bezier(.7,0,.84,0); --ease-in-out: cubic-bezier(.65,0,.35,1);
+}
+@media(prefers-color-scheme:dark){:root{
+ --color-paper: oklch(18% .014 250); --color-surface: oklch(21% .014 250); --color-paper-2: oklch(25% .018 250);
+ --color-ink: oklch(95% .006 258); --color-muted: oklch(77% .016 258); --color-rule: oklch(39% .02 250);
+ --color-accent: oklch(73% .13 256); --color-accent-ink: oklch(18% .014 250); --color-focus: oklch(79% .1 256);
+ --color-error: oklch(77% .12 25); --color-success: oklch(76% .10 155); --color-warning: oklch(79% .10 75);
+}}

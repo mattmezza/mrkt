@@ -1,0 +1,93 @@
+name: mrkt
+services:
+  data-init:
+    image: alpine:3.23.3
+    user: "0:0"
+    command: ["sh", "-ec", "install -d -o 100 -g 101 -m 0700 /data"]
+    volumes: [database:/data]
+    tmpfs: ["/tmp:size=40m,mode=0700,uid=100,gid=101"]
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      MRKT_DB_PATH: /data/mrkt.db
+      MRKT_LISTEN: :8080
+      MRKT_PUBLIC_URL: ${MRKT_PUBLIC_URL:-}
+      MRKT_ENCRYPTION_KEY: ${MRKT_ENCRYPTION_KEY:-}
+      MRKT_ADMIN_TOKEN: ${MRKT_ADMIN_TOKEN:-}
+      MRKT_FROM: ${MRKT_FROM:-}
+      MRKT_WEBHOOK_DEVELOPMENT_ALLOWED_HOSTS: ${MRKT_WEBHOOK_DEVELOPMENT_ALLOWED_HOSTS:-}
+      MRKT_S3_BUCKET: ${MRKT_S3_BUCKET:-}
+      MRKT_S3_REGION: ${MRKT_S3_REGION:-}
+      MRKT_S3_PREFIX: ${MRKT_S3_PREFIX:-mrkt/production}
+      MRKT_S3_ENDPOINT: ${MRKT_S3_ENDPOINT:-}
+      MRKT_S3_PATH_STYLE: ${MRKT_S3_PATH_STYLE:-false}
+      MRKT_SMTP_HOST: ${MRKT_SMTP_HOST:-}
+      MRKT_SMTP_PORT: ${MRKT_SMTP_PORT:-587}
+      MRKT_SMTP_TLS_MODE: ${MRKT_SMTP_TLS_MODE:-starttls}
+      MRKT_SMTP_USERNAME: ${MRKT_SMTP_USERNAME:-}
+      MRKT_SMTP_PASSWORD: ${MRKT_SMTP_PASSWORD:-}
+      MRKT_TURNSTILE_SECRET: ${MRKT_TURNSTILE_SECRET:-}
+      MRKT_TURNSTILE_HOSTNAME: ${MRKT_TURNSTILE_HOSTNAME:-}
+      MRKT_TURNSTILE_ACTION: ${MRKT_TURNSTILE_ACTION:-subscribe}
+      MRKT_RECOVERY: ${MRKT_RECOVERY:-false}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    volumes: [database:/data]
+    ports: ["127.0.0.1:8080:8080"]
+    healthcheck:
+      test: ["CMD", "mrkt", "doctor", "--local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 45s
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    depends_on:
+      data-init: {condition: service_completed_successfully}
+  litestream:
+    image: litestream/litestream:0.5.14
+    restart: unless-stopped
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    environment:
+      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:-}
+      LITESTREAM_PREFIX: ${LITESTREAM_PREFIX:-mrkt/production/backups}
+      LITESTREAM_REGION: ${LITESTREAM_REGION:-}
+      LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:-}
+      LITESTREAM_PATH_STYLE: ${LITESTREAM_PATH_STYLE:-false}
+      MRKT_INSTALLATION_ID: ${MRKT_INSTALLATION_ID:-}
+      AWS_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+    volumes:
+      - database:/data
+      - ./deploy/litestream.yml:/etc/litestream.yml:ro
+    depends_on:
+      app: {condition: service_healthy}
+    ports: ["127.0.0.1:9090:9090"]
+    stop_grace_period: 45s
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+  recovery:
+    profiles: ["recovery"]
+    image: litestream/litestream:0.5.14
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/deploy/restore.sh"]
+    environment:
+      MRKT_DB_PATH: /data/mrkt.db
+      LITESTREAM_CONFIG: /etc/litestream.yml
+      LITESTREAM_BUCKET: ${LITESTREAM_BUCKET:-}
+      LITESTREAM_PREFIX: ${LITESTREAM_PREFIX:-mrkt/production/backups}
+      LITESTREAM_REGION: ${LITESTREAM_REGION:-}
+      LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:-}
+      LITESTREAM_PATH_STYLE: ${LITESTREAM_PATH_STYLE:-false}
+      MRKT_INSTALLATION_ID: ${MRKT_INSTALLATION_ID:-}
+      AWS_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+    volumes:
+      - database:/data
+      - ./deploy/litestream.yml:/etc/litestream.yml:ro
+      - ./deploy/restore.sh:/deploy/restore.sh:ro
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+volumes:
+  database:
+    name: ${MRKT_DB_VOLUME:-mrkt_database}

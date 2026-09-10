@@ -1,0 +1,23 @@
+addr: ":9090"
+logging:
+  level: info
+  type: json
+  stderr: true
+retention:
+  enabled: false
+validation:
+  interval: 5m
+shutdown-sync-timeout: 30s
+shutdown-sync-interval: 500ms
+dbs:
+  - path: /data/mrkt.db
+    monitor-interval: 1s
+    checkpoint-interval: 1m
+    busy-timeout: 5s
+    replica:
+      type: s3
+      bucket: ${LITESTREAM_BUCKET}
+      path: ${LITESTREAM_PREFIX}/${MRKT_INSTALLATION_ID}/sqlite
+      region: ${LITESTREAM_REGION}
+      endpoint: ${LITESTREAM_ENDPOINT}
+      force-path-style: ${LITESTREAM_PATH_STYLE}

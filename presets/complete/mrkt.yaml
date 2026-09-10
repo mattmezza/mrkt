@@ -1,0 +1,35 @@
+version: 1
+project:
+  name: example
+  default_locale: en
+  locales: [en, it, tr]
+lists:
+  - id: newsletter
+    name: Newsletter
+    purpose: Product news and useful updates
+    policy_version: "2026-01"
+files:
+  - {path: welcome.en.html, content_type: text/html, size: 0, sha256: ""}
+  - {path: welcome.en.txt, content_type: text/plain, size: 0, sha256: ""}
+  - {path: welcome.en.subject, content_type: text/plain, size: 0, sha256: ""}
+  - {path: welcome.it.html, content_type: text/html, size: 0, sha256: ""}
+  - {path: welcome.it.txt, content_type: text/plain, size: 0, sha256: ""}
+  - {path: welcome.it.subject, content_type: text/plain, size: 0, sha256: ""}
+  - {path: welcome.tr.html, content_type: text/html, size: 0, sha256: ""}
+  - {path: welcome.tr.txt, content_type: text/plain, size: 0, sha256: ""}
+  - {path: welcome.tr.subject, content_type: text/plain, size: 0, sha256: ""}
+messages:
+  welcome:
+    en: {subject: welcome.en.subject, html: welcome.en.html, text: welcome.en.txt}
+    it: {subject: welcome.it.subject, html: welcome.it.html, text: welcome.it.txt}
+    tr: {subject: welcome.tr.subject, html: welcome.tr.html, text: welcome.tr.txt}
+sequences:
+  - id: welcome
+    list: newsletter
+    entry: subscription
+    reentry: once
+    steps:
+      - {id: send, type: send, message: welcome, next: done}
+      - {id: done, type: complete}
+broadcasts:
+  - {id: news, event: article.published, list: newsletter, message: welcome}

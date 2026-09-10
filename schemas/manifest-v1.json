@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "broadcasts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "stream": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "list",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "files": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "sha256": {
+            "pattern": "^([a-f0-9]{64})?$",
+            "type": "string"
+          },
+          "size": {
+            "maximum": 8388608,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "content_type"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "lists": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "purpose",
+          "policy_version"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "messages": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "attachments": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "html": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subject",
+            "html",
+            "text"
+          ],
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "project": {
+      "additionalProperties": false,
+      "properties": {
+        "default_locale": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "locales": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "default_locale",
+        "locales"
+      ],
+      "type": "object"
+    },
+    "sequences": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "entry": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "exit": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "eq",
+                  "ne",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "exists"
+                ],
+                "type": "string"
+              },
+              "value": true
+            },
+            "required": [
+              "field",
+              "op"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "reentry": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "condition": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "exists"
+                      ],
+                      "type": "string"
+                    },
+                    "value": true
+                  },
+                  "required": [
+                    "field",
+                    "op"
+                  ],
+                  "type": [
+                    "null",
+                    "object"
+                  ]
+                },
+                "delay": {
+                  "type": "string"
+                },
+                "else": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "stream": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "list",
+          "entry",
+          "reentry",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "version": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version",
+    "project"
+  ],
+  "title": "mrkt release manifest v1",
+  "type": "object"
+}

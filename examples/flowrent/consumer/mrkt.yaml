@@ -1,0 +1,18 @@
+version: 1
+project: {name: flowrent, default_locale: en, locales: [en, it, tr]}
+lists:
+  - {id: guests, name: Guest updates, purpose: Transactional booking follow-up, policy_version: "2026-01"}
+files:
+  - {path: message.html, content_type: text/html, size: 0, sha256: ""}
+  - {path: message.txt, content_type: text/plain, size: 0, sha256: ""}
+messages:
+  followup:
+    en: {subject: message.txt, html: message.html, text: message.txt}
+sequences:
+  - id: booking-followup
+    list: guests
+    event: booking.completed
+    entry: event
+    reentry: event
+    steps: [{id: send, type: send, message: followup, next: done}, {id: done, type: complete}]
+broadcasts: []

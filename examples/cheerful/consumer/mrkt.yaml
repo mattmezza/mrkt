@@ -1,0 +1,13 @@
+version: 1
+project: {name: cheerful, default_locale: en, locales: [en, it, tr]}
+lists:
+  - {id: readers, name: Readers, purpose: New article announcements, policy_version: "2026-01"}
+files:
+  - {path: article.html, content_type: text/html, size: 0, sha256: ""}
+  - {path: article.txt, content_type: text/plain, size: 0, sha256: ""}
+messages:
+  article:
+    en: {subject: article.txt, html: article.html, text: article.txt}
+sequences: []
+broadcasts:
+  - {id: new-article, event: article.published, list: readers, message: article}

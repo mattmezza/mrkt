@@ -1,0 +1,3 @@
+Benvenuto, {{.Name}}
+
+Grazie per esserti iscritto. Annulla l’iscrizione: {{.UnsubscribeURL}}

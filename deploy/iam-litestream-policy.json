@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListBackupPrefix",
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Resource": "arn:aws:s3:::REPLACE_BUCKET",
+      "Condition": {"StringLike": {"s3:prefix": ["REPLACE_BACKUP_PREFIX/REPLACE_INSTALLATION_ID/sqlite/*"]}}
+    },
+    {
+      "Sid": "ReadWriteBackupOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+      "Resource": "arn:aws:s3:::REPLACE_BUCKET/REPLACE_BACKUP_PREFIX/REPLACE_INSTALLATION_ID/sqlite/*"
+    }
+  ]
+}

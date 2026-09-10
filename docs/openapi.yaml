@@ -1,0 +1,299 @@
+openapi: 3.1.0
+info:
+  title: mrkt REST API
+  version: 0.1.0
+  description: >-
+    All remote CLI and MCP operations use this API. Project authority is derived
+    from a hashed Bearer token. Scope names are read, config, operate and send.
+    Resource IDs do not confer authority. SMTP acceptance is not inbox delivery.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200': {description: HTTP process available}
+  /api/v1/projects:
+    get:
+      operationId: projectsList
+      parameters:
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/cursor'}
+      responses:
+        '200': {$ref: '#/components/responses/List'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: projectsCreate
+      description: Installation administrator only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id: {type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$'}
+                name: {type: string}
+      responses:
+        '200': {description: Created project}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/projects/{project}/{resource}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - {$ref: '#/components/parameters/resource'}
+    get:
+      operationId: resourceList
+      parameters:
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/cursor'}
+      responses:
+        '200': {$ref: '#/components/responses/List'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: resourceCreate
+      description: >-
+        contacts upserts never grant consent; events require a project-scoped key,
+        type, and optional owned contact_id. transports may be provisioned only by
+        an installation administrator. Secrets are returned once at creation.
+      parameters:
+        - {$ref: '#/components/parameters/key'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {$ref: '#/components/schemas/Contact'}
+                - {$ref: '#/components/schemas/Event'}
+                - {$ref: '#/components/schemas/RegistryCreate'}
+                - {$ref: '#/components/schemas/TokenCreate'}
+      responses:
+        '200': {description: Created or idempotently upserted resource}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/projects/{project}/{resource}/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - {$ref: '#/components/parameters/resource'}
+      - {$ref: '#/components/parameters/id'}
+    get:
+      operationId: resourceGet
+      responses:
+        '200': {description: Owned resource record}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: resourceDelete
+      description: Explicit supported deletion/revocation; unknown resource actions fail.
+      responses:
+        '200': {description: Resource deleted, disabled or token revoked}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/projects/{project}/{resource}/{id}/{action}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - {$ref: '#/components/parameters/resource'}
+      - {$ref: '#/components/parameters/id'}
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [plan, deploy, rollback, preview, simulate, subscribe, confirm, unsubscribe, preferences, pause, resume, cancel, explain, check, rotate, replay, export, preview-import, import, usage, retention, gc, plan-migration, migrate]
+    post:
+      operationId: resourceAction
+      description: >-
+        Use id _ for collection operations such as releases plan/deploy/rollback,
+        simulation, and project pause/resume. Consult the operation catalog for
+        resource-specific request shapes. Unknown combinations return 404.
+      parameters:
+        - {$ref: '#/components/parameters/key'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200': {description: Operation result}
+        '409': {description: Stale release, duplicate key conflict or invalid state}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/projects/{project}/artifacts/{sha256}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - name: sha256
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[a-f0-9]{64}$'}
+    put:
+      operationId: artifactUpload
+      description: Configuration scope. Content-Length and correct SHA256 required, 8 MiB maximum. Conditional immutable S3 write.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '201': {description: Verified immutable object}
+        default: {$ref: '#/components/responses/Error'}
+    get:
+      operationId: artifactDownload
+      responses:
+        '200': {description: Private download; never interpreted as active HTML}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/installation:
+    get:
+      operationId: installationGet
+      responses:
+        '200': {description: Recovery and outbound pause state}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/installation/{action}:
+    parameters:
+      - name: action
+        in: path
+        required: true
+        schema: {type: string, enum: [resume, pause, verify]}
+    post:
+      operationId: installationAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reconciled: {type: boolean}
+                note: {type: string}
+      responses:
+        '200': {description: Audited installation operation}
+        default: {$ref: '#/components/responses/Error'}
+  /public/{project}/{action}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - name: action
+        in: path
+        required: true
+        schema: {type: string, enum: [subscribe, confirm, unsubscribe]}
+    post:
+      operationId: publicConsent
+      security: []
+      description: >-
+        subscribe requires email/list/challenge_token and gives a generic response;
+        confirm uses an expiring single-use token; unsubscribe accepts a token,
+        including an RFC 8058 query token with List-Unsubscribe=One-Click form body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+          application/x-www-form-urlencoded:
+            schema: {type: object}
+      responses:
+        '200': {description: Consent operation result}
+        default: {$ref: '#/components/responses/Error'}
+  /feedback/{project}/{transport}:
+    parameters:
+      - {$ref: '#/components/parameters/project'}
+      - name: transport
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      operationId: feedbackIngest
+      security: []
+      description: SNS signature/topic validation for SES, or HMAC timestamp and exact-body validation for private MTA callbacks. Ingestible in recovery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200': {description: Deduplicated feedback applied}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    project: {name: project, in: path, required: true, schema: {type: string}}
+    id: {name: id, in: path, required: true, schema: {type: string}}
+    resource:
+      name: resource
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [contacts, lists, consent, tokens, releases, events, enrollments, broadcasts, deliveries, domains, transports, webhooks, webhook-deliveries, operations]
+    limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+    cursor: {name: cursor, in: query, schema: {type: string}}
+    key: {name: Idempotency-Key, in: header, schema: {type: string, maxLength: 200}}
+  responses:
+    Error:
+      description: Stable application error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code: {type: string}
+                  message: {type: string}
+    List:
+      description: Cursor-paginated records scoped to authority
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, next_cursor]
+            properties:
+              items: {type: array, items: {type: object}}
+              next_cursor: {type: string}
+  schemas:
+    Contact:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, format: email}
+        external_id: {type: string}
+        name: {type: string}
+        locale: {type: string}
+        timezone: {type: string}
+        attributes: {type: object}
+    Event:
+      type: object
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key: {type: string}
+        type: {type: string}
+        contact_id: {type: string}
+        payload: {type: object}
+        occurred_at: {type: string, format: date-time}
+    RegistryCreate:
+      type: object
+      additionalProperties: false
+      required: [name, config]
+      properties:
+        name: {type: string}
+        config: {type: object}
+    TokenCreate:
+      type: object
+      additionalProperties: false
+      required: [name, scopes]
+      properties:
+        name: {type: string}
+        scopes: {type: array, items: {enum: [read, config, operate, send]}}
+    Deploy:
+      type: object
+      additionalProperties: false
+      required: [manifest, expected_release]
+      properties:
+        manifest: {$ref: '../schemas/manifest-v1.json'}
+        expected_release: {type: string}
+        allow_destructive: {type: boolean, default: false}

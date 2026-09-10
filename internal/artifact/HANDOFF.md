@@ -1,0 +1,27 @@
+# Infrastructure handoff
+
+Interfaces match `docs/contracts.md`: `artifact.Store`, `artifact.Info`, `mail.Sender`, `mail.Message`, `mail.Attachment`, and `mail.Result`. `S3Config` accepts region, bucket, prefix, endpoint, path style, and a maximum object size. It uses the normal AWS credential chain. Uploads are bounded to four concurrent temporary spools, digest/size checked before network I/O, conditionally created with `If-None-Match: *`, and verified with HEAD. Downloads stream. Project references accept URL-safe base64 IDs while rejecting separators/traversal.
+
+`SMTPConfig` supports `tls`, `starttls`, and explicit development-only `plain`; certificate bypass is development-only. MIME is bounded by final encoded size, validates addresses/headers, includes text+HTML, safe encoded attachment names, stable Message-ID, and RFC one-click unsubscribe headers. Pre-DATA 4xx/network errors are transient, 5xx errors permanent, and every error after DATA starts is uncertain.
+
+`mail.ProbeSMTP(ctx, cfg)` performs configuration validation, TLS/STARTTLS, optional authentication and SMTP `NOOP`, then quits without issuing `MAIL`, `RCPT`, or `DATA`. Its real Mailpit integration test passes and it is suitable for the administrator-only transport diagnostic action.
+
+Security helpers provide AES-256-GCM secret envelopes bound to caller-supplied context, strict Turnstile server verification with optional hostname/action matching, and signed webhook POST. Webhooks resolve once, reject any private/special result, dial the validated IP directly (preserving TLS hostname), prohibit redirects and URL credentials, bound time/response reads, and sign exact bytes as `timestamp.payload`.
+
+Executed successfully:
+
+- `go test ./internal/artifact ./internal/mail ./internal/security`
+- `docker compose -f compose.yaml -f compose.dev.yaml config --quiet` with required synthetic environment
+- `go test -tags=integration ./deploy -run TestLitestreamRestoreFromRealObjectStore -v` (real MinIO, Litestream replication, isolated full-integrity restore, state assertions)
+- `go test -tags=integration ./internal/artifact ./internal/mail -run 'Test(S3RealCompatibleStore|SMTPRealCapture)' -v` against Compose MinIO (`127.0.0.1:9000`, bucket `mrkt`, development credentials in `compose.dev.yaml`) and Mailpit SMTP/API (`127.0.0.1:1025`/`:8025`)
+- `docker build -t mrkt:test .` (Node/Tailwind asset stage, Go build stage, non-root runtime)
+
+Limitations/integration notes: engine/server must wire these configs and enforce recovery pause/resume; Turnstile is implemented but public HTTP routing must call it. Webhook delivery is a low-level safe attempt helper; engine owns transactional outbox, retry, history, and secret rotation. Generic SMTP has no provider feedback. `BuildMIME` currently sets Date at construction time; rendered message bytes should be frozen before retries. Compose healthcheck expects `mrkt doctor --local`. Production secrets should use Docker secrets/a secret manager rather than a committed env file. The restore integration asserts representative safety rows; full engine-schema consent/queue/release/artifact verification belongs in the application recovery verifier once its schema is stable.
+
+Clean Compose verification initialized the named volume successfully as non-root and proved dependency gating. The first full application start exposed a ServeMux registration panic, which the HTTP owner fixed. After a clean rebuild with Go 1.27.1 and Node 24.21.0, `app`, MinIO, Mailpit, and Litestream all started; application health returned `{"status":"ok"}`. Litestream 0.5.14 created and uploaded a snapshot plus LTX files to MinIO, reported replica/database TXID 2, and exposed `litestream_sync_error_count 0`.
+
+The recovery integration now creates its fixture exclusively through actual engine operations and real S3/SMTP adapters. It completes double opt-in through a captured confirmation, records an accepted welcome delivery, creates separate unsubscribed consent and queued work, and restores the active release, every artifact reference, encrypted transport/webhook configuration, and pending outbox state. Opening the restored database with `Recovery:false` plus the restore marker forces recovery/outbound pause; a tick sends neither mail nor business webhook, while correctly signed inbound bounce feedback is applied and suppresses the restored recipient. The test also proves an existing database is not overwritten and an unavailable backup bucket does not create an empty database. Enhanced drill runtime was 14.90 seconds.
+
+The bounded local workload observation in `docs/benchmark.md` executed successfully: 1,000 SQLite contact upserts in 492.2 ms, 100 verified 4 KiB S3 PUTs in 1.299 s, and 100 Mailpit SMTP captures in 2.285 s on the documented host. No production capacity claim is inferred.
+
+Independent boundary review: SMTP calls `Mail` and `Rcpt` before `Data`; only those pre-DATA failures are classified transient/permanent. Every write/final-dot failure after `Data` succeeds is uncertain, and `Quit` failure after a successful final response does not revoke acceptance. Litestream reads the same local SQLite volume as the sole application writer, uses its own backup credential environment and a backup-only prefix, never auto-restores, disables backup deletion, validates replicas, and performs bounded shutdown sync. The restore source is the configured original DB path and the output is a distinct partial file, with full integrity check before rename and marker creation.
