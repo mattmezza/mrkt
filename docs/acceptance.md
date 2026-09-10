@@ -25,6 +25,6 @@ The acceptance contract is the root `prompt.md`. These checks use synthetic reci
 
 ## Final delivery gate
 
-Clean-clone Compose build/start, the latest browser/Go/vulnerability rerun, and final real recovery drill passed. The final private push and CI inspection are tracked in [build status](build-status.md). The repository's private branch-protection endpoint returned HTTP 403 for the current plan; the repository was not made public to enable it.
+Clean-clone Compose build/start, the latest browser/Go/vulnerability rerun, and final real recovery drill passed. Private checkpoint `fb5d1f461b7f566c1596e1fe3bd7834d84f9178b` passed both jobs in GitHub Actions run `34498089383`; details are tracked in [build status](build-status.md). The repository's private branch-protection endpoint returned HTTP 403 for the current plan; the repository was not made public to enable it.
 
 SES and real internet deliverability were not exercised against an external production account. Those require operator provisioning and separately authorized sending; local captures do not establish inbox delivery or provider production readiness.
