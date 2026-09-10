@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+node_modules/
+bin/
+dist/
+*.db
+*.db-*
+.local/
+test-results/
