@@ -45,6 +45,12 @@ func (s *SecretBox) Open(encoded, context string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode encrypted secret: %w", err)
 	}
+	// Reject alternate textual encodings that differ only in unused base64
+	// padding bits. Keeping one canonical representation prevents a secret from
+	// being changed in storage without changing the authenticated ciphertext.
+	if base64.RawURLEncoding.EncodeToString(raw) != p {
+		return nil, fmt.Errorf("decode encrypted secret: non-canonical encoding")
+	}
 	if len(raw) < s.aead.NonceSize() {
 		return nil, fmt.Errorf("encrypted secret is truncated")
 	}

@@ -3,11 +3,13 @@ package security
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,8 +30,22 @@ func TestSecretBoxContextAndTamper(t *testing.T) {
 	if _, err := b.Open(v, "project:b"); err == nil {
 		t.Fatal("context substitution accepted")
 	}
-	if _, err := b.Open(v[:len(v)-1]+"A", "project:a"); err == nil {
+	version, payload, _ := strings.Cut(v, ":")
+	raw, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[len(raw)-1] ^= 1
+	tampered := version + ":" + base64.RawURLEncoding.EncodeToString(raw)
+	if _, err := b.Open(tampered, "project:a"); err == nil {
 		t.Fatal("tamper accepted")
+	}
+
+	// For this payload length the final base64 character contains unused bits;
+	// changing only those bits must still be rejected as a non-canonical value.
+	nonCanonical := v[:len(v)-1] + string(v[len(v)-1]+1)
+	if _, err := b.Open(nonCanonical, "project:a"); err == nil {
+		t.Fatal("non-canonical encoding accepted")
 	}
 }
 
